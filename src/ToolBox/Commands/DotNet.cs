@@ -4,8 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using ToolBox.Infrastructure;
 
-namespace Toolbox;
+namespace ToolBox.Commands;
 
 internal static class DotNet
 {

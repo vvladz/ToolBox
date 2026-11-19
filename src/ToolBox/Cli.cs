@@ -1,4 +1,9 @@
-namespace Toolbox;
+using ToolBox.Commands;
+using ToolBox.Configuration;
+using ToolBox.Infrastructure;
+using ToolBox.Installation;
+
+namespace ToolBox;
 
 internal static class Cli
 {
@@ -15,10 +20,10 @@ internal static class Cli
             if (options.Help) { PrintHelp(); return 0; }
 
             var home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".toolbox");
-            var manifests = Manifest.ReadAll(Path.Combine(home, "etc"), options.Tool);
+            var manifests = ManifestReader.ReadAll(Path.Combine(home, "etc"), options.Tool);
             foreach (var manifest in manifests)
                 if (!commands.ContainsKey(manifest.Cmd))
-                    throw new InvalidDataException($"{manifest.Id}: unknown cmd '{manifest.Cmd}'. Register it in etc/Commands.cs.");
+                    throw new InvalidDataException($"{manifest.Id}: unknown cmd '{manifest.Cmd}'. Register it in Commands/CommandRegistry.cs.");
 
             Directory.CreateDirectory(Path.Combine(home, "tools"));
             Directory.CreateDirectory(Path.Combine(home, "bin"));
@@ -90,13 +95,13 @@ internal static class Cli
     private static void PrintHelp() => Console.Out.WriteLine("""
         Toolbox — install tools from ~/.toolbox/etc/*.json
 
-        run.cmd [tool] [--force]
+        ToolBox [tool] [--force]
 
         Omit tool           Install/update every tool manifest.
         --force             Rebuild even when the active source/settings match.
         --help, -h          Show this help.
 
-        cmd selects a source command from etc/Commands.cs: DotNet or GitHubRelease.
+        cmd selects a source command from Commands/CommandRegistry.cs: DotNet or GitHubRelease.
         Installation paths are fixed under ~/.toolbox.
         """);
 }

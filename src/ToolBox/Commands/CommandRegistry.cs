@@ -1,9 +1,6 @@
-#:include ../usr/DotNet.cs
-#:include ../usr/GitHubRelease.cs
+namespace ToolBox.Commands;
 
-namespace Toolbox;
-
-internal static class Commands
+internal static class CommandRegistry
 {
     internal static IReadOnlyDictionary<string, ToolCommand> Create() =>
         new Dictionary<string, ToolCommand>(StringComparer.OrdinalIgnoreCase)

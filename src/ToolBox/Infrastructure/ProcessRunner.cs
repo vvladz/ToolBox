@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 
-namespace Toolbox;
+namespace ToolBox.Infrastructure;
 
 internal static class ProcessRunner
 {

@@ -1,9 +1,10 @@
 using System.Globalization;
 using System.Text;
+using ToolBox.Commands;
+using ToolBox.Configuration;
+using ToolBox.Infrastructure;
 
-namespace Toolbox;
-
-internal sealed record InstallResult(bool Changed, string VersionDirectory, string LogFile);
+namespace ToolBox.Installation;
 
 internal static class Installer
 {

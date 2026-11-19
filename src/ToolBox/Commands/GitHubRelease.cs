@@ -4,8 +4,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using ToolBox.Infrastructure;
 
-namespace Toolbox;
+namespace ToolBox.Commands;
 
 internal static class GitHubRelease
 {

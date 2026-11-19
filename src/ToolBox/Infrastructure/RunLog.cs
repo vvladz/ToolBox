@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Toolbox;
+namespace ToolBox.Infrastructure;
 
 internal sealed class RunLog : IDisposable
 {

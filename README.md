@@ -6,17 +6,40 @@ Installed tools are launched through small `.cmd` files. Updates select a new ve
 
 ## Requirements
 
-- Windows and .NET SDK **11.0.100**, as specified in `bin/global.json`.
+- Windows x64, PowerShell 7, Git, and .NET SDK **11.0.100 or later**. `global.json` selects the latest compatible installed stable SDK with `rollForward: latestMajor`.
+- .NET 11 runtime for the published Toolbox application. It is included with the .NET 11 SDK.
 - For the `DotNet` source: Git, the SDK required by the source repository, and the runtime needed by the published application.
 - Access to the repository or release selected in each manifest.
 
-Toolbox itself is a C# file-based application. Run it from its source checkout; there is no separate build or installation step for Toolbox.
+Toolbox is a .NET console application. The installer builds a framework-dependent application, which uses the installed .NET runtime.
+
+## Install and update Toolbox
+
+Clone this repository using your preferred Git URL, then run the installer:
+
+```powershell
+git clone <toolbox-repository-url> ToolBox
+Set-Location ToolBox
+pwsh -File .\install.ps1
+```
+
+The installer clones or updates Toolbox's source checkout at `~/.toolbox/src`, publishes `src/ToolBox/ToolBox.csproj` into `~/.toolbox/bin`, and adds that directory to your user PATH. `ToolBox.exe` and its companion DLL/configuration files are published together. Other tools' `.cmd` launchers are preserved.
+
+Open a new terminal and run `ToolBox --help`. When you run `install.ps1` directly in your current PowerShell session, it also updates that session's PATH.
+
+To update an existing installation:
+
+```powershell
+pwsh -File "$env:USERPROFILE\.toolbox\src\install.ps1"
+```
+
+The repository URL defaults to the cached checkout's `origin`, or the installer's checkout on first installation. Use `-Repository <git-url>` to supply it explicitly. `-Branch` defaults to `main`. Git uses your existing SSH or HTTPS credentials. The source checkout is updated to the selected branch's commit; local changes are never discarded. Close the installed ToolBox process before updating its executable.
 
 ## Quick start
 
 In this guide, `ToolBox` is the directory containing this checkout, and `~` is your Windows user profile. `Tool`, `ToolOne`, and `ToolTwo` are example application names. Replace repository placeholders and project paths with your own values.
 
-1. Create the manifest directory:
+1. After installing Toolbox, create the manifest directory if needed:
 
    ```powershell
    New-Item -ItemType Directory -Path "$env:USERPROFILE\.toolbox\etc" -Force
@@ -37,10 +60,10 @@ In this guide, `ToolBox` is the directory containing this checkout, and `~` is y
    }
    ```
 
-3. From the Toolbox checkout, install the tool:
+3. Install the tool:
 
    ```powershell
-   .\bin\run.cmd Tool
+   ToolBox Tool
    ```
 
 4. Run the installed application:
@@ -49,18 +72,18 @@ In this guide, `ToolBox` is the directory containing this checkout, and `~` is y
    & "$env:USERPROFILE\.toolbox\bin\Tool.cmd"
    ```
 
-To run installed commands by name, add `%USERPROFILE%\.toolbox\bin` to your user PATH manually. You can also add the checkout's `bin` directory to invoke `run.cmd` from any location. Open a new terminal after editing PATH.
+The installer adds `%USERPROFILE%\.toolbox\bin` to PATH, so installed commands and aliases can be invoked by name from a new terminal.
 
 ## Commands
 
 ```powershell
-.\bin\run.cmd Tool          # install or update one tool
-.\bin\run.cmd               # install or update every manifest
-.\bin\run.cmd Tool --force  # rebuild or download again
-.\bin\run.cmd --help
+ToolBox Tool          # install or update one tool
+ToolBox               # install or update every manifest
+ToolBox Tool --force  # rebuild or download again
+ToolBox --help
 ```
 
-`run.cmd` selects the SDK from `bin/global.json` and preserves the calling shell's working directory. All configuration and installation paths are fixed under `~/.toolbox`.
+All configuration and installation paths are fixed under `~/.toolbox`. The CLI preserves the calling shell's working directory. PATH setup belongs to `install.ps1`.
 
 ## Manifests and command aliases
 
@@ -169,24 +192,28 @@ The source checkout contains:
 
 ```text
 ToolBox/
-  bin/
-    run.cmd             # Windows launcher
-    run.cs              # entry point and shared source includes
-    global.json         # SDK used by Toolbox
-  etc/
-    Commands.cs         # command registry and command source includes
-  lib/                  # installer, manifests, Git, processes, and logs
-  usr/
-    DotNet.cs
-    GitHubRelease.cs
+  ToolBox.slnx
+  global.json           # SDK used by the solution
+  install.ps1           # source installation/update and user PATH setup
+  src/ToolBox/
+    ToolBox.csproj
+    Program.cs
+    Cli.cs              # command-line handling
+    Commands/           # source commands, registry, and command contracts
+    Configuration/      # manifest models and parsing
+    Installation/       # version installation and launchers
+    Infrastructure/     # Git, process execution, logging, and validation
+  tests/ToolBox.Tests/   # xUnit regression tests
 ```
 
 User configuration and installed files live separately:
 
 ```text
 ~/.toolbox/
+  src/                  # complete Toolbox Git checkout
+    src/ToolBox/        # application project inside that checkout
   etc/                  # JSON manifests, such as Tool.json
-  bin/                  # .cmd launchers
+  bin/                  # ToolBox.exe, companion publish files, and .cmd launchers
   logs/<tool>/          # one log per installation attempt
   tools/<tool>/
     source/             # Git checkout for DotNet
@@ -195,7 +222,7 @@ User configuration and installed files live separately:
     installed           # selected version directory name, plain text
 ```
 
-`ToolBox/etc/Commands.cs` is part of the application's source. It is separate from the user manifests in `~/.toolbox/etc`.
+`src/ToolBox/Commands/CommandRegistry.cs` registers the application's source commands. User manifests remain in `~/.toolbox/etc`.
 
 `installed` contains one UTF-8 line without a BOM: the selected directory name under `versions`. Each launcher reads it once, starts the EXE from that directory, forwards arguments, and returns its exit code. The caller's working directory is preserved. Applications can read files next to their EXE.
 
@@ -205,13 +232,29 @@ A shared lock at `tools/.install.lock` prevents concurrent installations. Runnin
 
 ## Adding a source command
 
-Adding a tool that uses an existing source command requires only a JSON manifest. To add a new installation method, create a C# file in `usr`, include it with `#:include` in `etc/Commands.cs`, and register it in the command dictionary.
+Adding a tool that uses an existing source command requires only a JSON manifest. To add a new installation method, create a C# file in `src/ToolBox/Commands`, register it in `CommandRegistry.cs`, and rebuild Toolbox. The project includes C# source files automatically.
 
 The handler signature is `Task<PrepareResult> PrepareAsync(CommandContext context)`. `context.Args` contains the manifest arguments. `context.InstalledDirectory` is the selected version's path, or `null` when none is selected. The context also provides the tool directory, an attempt-specific work directory, `Force`, `Log`, and `CancellationToken`.
 
 Return `new Prepared(absoluteDirectory)` when files are ready to install, or `new Unchanged()` when the installed version already matches the source. Throw an exception if preparation fails. Prepared directories must not contain symlinks or other reparse points.
 
 All source commands are compiled into one C# application. JSON manifests are read at runtime.
+
+## Build and test
+
+From the repository root:
+
+```powershell
+dotnet build ToolBox.slnx -c Release
+dotnet test ToolBox.slnx -c Release
+dotnet run --project src/ToolBox -- --help
+```
+
+To publish the application to a separate directory for inspection:
+
+```powershell
+dotnet publish src/ToolBox/ToolBox.csproj -c Release -r win-x64 --self-contained false -o artifacts/publish
+```
 
 ## Logs and exit codes
 
