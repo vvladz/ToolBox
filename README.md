@@ -15,17 +15,25 @@ Toolbox is a .NET console application. The installer builds a framework-dependen
 
 ## Install and update Toolbox
 
-Clone this repository using your preferred Git URL, then run the installer:
+Run this command in **PowerShell 7** from any directory:
 
 ```powershell
-git clone <toolbox-repository-url> ToolBox
+iex (irm https://raw.githubusercontent.com/vvladz/ToolBox/main/install.ps1)
+```
+
+The script downloads and builds the source from the public [ToolBox repository](https://github.com/vvladz/ToolBox). A separate checkout is not required. Run the same command again to update.
+
+You can also run the installer from a local checkout:
+
+```powershell
+git clone https://github.com/vvladz/ToolBox.git
 Set-Location ToolBox
 pwsh -File .\install.ps1
 ```
 
 The installer clones or updates Toolbox's source checkout at `~/.toolbox/src`, publishes `src/ToolBox/ToolBox.csproj` into `~/.toolbox/bin`, and adds that directory to your user PATH. `ToolBox.exe` and its companion DLL/configuration files are published together. Other tools' `.cmd` launchers are preserved.
 
-Open a new terminal and run `ToolBox --help`. When you run `install.ps1` directly in your current PowerShell session, it also updates that session's PATH.
+Run `ToolBox --help` in the same PowerShell session after the one-line installation. If you ran the installer in a separate PowerShell process, open a new terminal first.
 
 To update an existing installation:
 
@@ -33,7 +41,7 @@ To update an existing installation:
 pwsh -File "$env:USERPROFILE\.toolbox\src\install.ps1"
 ```
 
-The repository URL defaults to the cached checkout's `origin`, or the installer's checkout on first installation. Use `-Repository <git-url>` to supply it explicitly. `-Branch` defaults to `main`. Git uses your existing SSH or HTTPS credentials. The source checkout is updated to the selected branch's commit; local changes are never discarded. Close the installed ToolBox process before updating its executable.
+The repository URL defaults to the cached checkout's `origin`, or `https://github.com/vvladz/ToolBox.git` on first installation. When running the script from a file, use `-Repository <git-url>` to supply another URL. `-Branch` defaults to `main`. Git uses your existing SSH or HTTPS credentials when needed. The source checkout is updated to the selected branch's commit; local changes are never discarded. Close the installed ToolBox process before updating its executable.
 
 ## Quick start
 
