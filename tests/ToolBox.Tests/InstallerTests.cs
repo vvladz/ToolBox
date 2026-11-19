@@ -44,7 +44,9 @@ public sealed class InstallerTests
         Assert.Equal(launcherContent, File.ReadAllText(launcher));
         Assert.Equal(launcherWriteTime, File.GetLastWriteTimeUtc(launcher));
         Assert.Equal(Encoding.UTF8.GetBytes(Path.GetFileName(second.VersionDirectory) + "\n"),
-            File.ReadAllBytes(Path.Combine(home, "tools", "Tool", "installed")));
+            File.ReadAllBytes(Path.Combine(home, "var", "tools", "Tool", "installed")));
+        Assert.StartsWith(Path.Combine(home, "var", "log", "Tool") + Path.DirectorySeparatorChar, second.LogFile);
+        Assert.Contains("set \"_toolbox_dir=%~dp0..\\var\\tools\\Tool\"", launcherContent);
         Assert.All(new DirectoryInfo(home).EnumerateFileSystemInfos("*", SearchOption.AllDirectories),
             entry => Assert.False(entry.Attributes.HasFlag(FileAttributes.ReparsePoint)));
     }
@@ -59,7 +61,7 @@ public sealed class InstallerTests
         var manifest = CreateManifest(new ToolBinary("Tool.exe", "tool"));
         Task<PrepareResult> Prepare(CommandContext _) => Task.FromResult<PrepareResult>(new Prepared(payload));
         var first = await Installer.InstallAsync(manifest, home, Prepare, false, default);
-        var marker = Path.Combine(home, "tools", "Tool", "installed");
+        var marker = Path.Combine(home, "var", "tools", "Tool", "installed");
         var selected = File.ReadAllText(marker);
         File.Delete(Path.Combine(payload, "Tool.exe"));
 

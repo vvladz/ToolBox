@@ -19,16 +19,16 @@ internal static class Cli
             var options = ParseOptions(args);
             if (options.Help) { PrintHelp(); return 0; }
 
-            var home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".toolbox");
+            var home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "toolbox");
             var manifests = ManifestReader.ReadAll(Path.Combine(home, "etc"), options.Tool);
             foreach (var manifest in manifests)
                 if (!commands.ContainsKey(manifest.Cmd))
                     throw new InvalidDataException($"{manifest.Id}: unknown cmd '{manifest.Cmd}'. Register it in Commands/CommandRegistry.cs.");
 
-            Directory.CreateDirectory(Path.Combine(home, "tools"));
+            Directory.CreateDirectory(Path.Combine(home, "var", "tools"));
             Directory.CreateDirectory(Path.Combine(home, "bin"));
-            Directory.CreateDirectory(Path.Combine(home, "logs"));
-            using var installLock = AcquireLock(Path.Combine(home, "tools", ".install.lock"));
+            Directory.CreateDirectory(Path.Combine(home, "var", "log"));
+            using var installLock = AcquireLock(Path.Combine(home, "var", "tools", ".install.lock"));
 
             foreach (var manifest in manifests)
             {
@@ -93,7 +93,7 @@ internal static class Cli
     }
 
     private static void PrintHelp() => Console.Out.WriteLine("""
-        Toolbox — install tools from ~/.toolbox/etc/*.json
+        Toolbox — install tools from ~/.config/toolbox/etc/*.json
 
         ToolBox [tool] [--force]
 
@@ -102,6 +102,6 @@ internal static class Cli
         --help, -h          Show this help.
 
         cmd selects a source command from Commands/CommandRegistry.cs: DotNet or GitHubRelease.
-        Installation paths are fixed under ~/.toolbox.
+        Installation paths are fixed under ~/.config/toolbox; working data is stored in var.
         """);
 }

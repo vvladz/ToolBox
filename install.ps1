@@ -17,8 +17,8 @@ param(
 
     $gitExecutable = (Get-Command git -CommandType Application -ErrorAction Stop).Source
     $dotnetExecutable = (Get-Command dotnet -CommandType Application -ErrorAction Stop).Source
-    $toolboxHome = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.toolbox'
-    $sourceDirectory = Join-Path $toolboxHome 'src'
+    $toolboxHome = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.config\toolbox'
+    $sourceDirectory = Join-Path $toolboxHome 'var\src'
     $binDirectory = Join-Path $toolboxHome 'bin'
 
     function Invoke-Git {
@@ -55,7 +55,7 @@ param(
         $Repository = [System.IO.Path]::GetFullPath($Repository)
     }
 
-    New-Item -ItemType Directory -Path $toolboxHome -Force | Out-Null
+    New-Item -ItemType Directory -Path ([System.IO.Path]::GetDirectoryName($sourceDirectory)) -Force | Out-Null
     if (-not (Test-Path -LiteralPath $sourceDirectory)) {
         Invoke-Git -Arguments @('clone', '--single-branch', '--no-tags', '--branch', $Branch, '--', $Repository, $sourceDirectory) | Out-Null
     }
@@ -98,7 +98,7 @@ param(
     Write-Host "Publishing Toolbox from $commit to $binDirectory"
     Push-Location $sourceDirectory
     try {
-        & $dotnetExecutable publish $projectFile -c Release -r win-x64 --self-contained false -p:UseAppHost=true -o $binDirectory
+        & $dotnetExecutable publish $projectFile -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=embedded -p:UseAppHost=true -o $binDirectory
         if ($LASTEXITCODE -ne 0) { throw "Publish failed with exit code $LASTEXITCODE." }
     }
     finally { Pop-Location }
@@ -106,7 +106,7 @@ param(
         throw 'Publish did not produce ToolBox.exe.'
     }
 
-    foreach ($directoryName in @('etc', 'logs', 'tools')) {
+    foreach ($directoryName in @('etc', 'var\log', 'var\tools')) {
         New-Item -ItemType Directory -Path (Join-Path $toolboxHome $directoryName) -Force | Out-Null
     }
 

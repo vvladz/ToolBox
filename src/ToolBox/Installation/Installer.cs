@@ -21,11 +21,11 @@ internal static class Installer
         home = Path.GetFullPath(home);
         var attempt = DateTime.UtcNow.ToString("yyyyMMddTHHmmssfffZ", CultureInfo.InvariantCulture)
             + "-" + Guid.NewGuid().ToString("N")[..8];
-        var toolDirectory = Path.Combine(home, "tools", manifest.Id);
+        var toolDirectory = Path.Combine(home, "var", "tools", manifest.Id);
         var versions = Path.Combine(toolDirectory, "versions");
         var installedFile = Path.Combine(toolDirectory, "installed");
         var bin = Path.Combine(home, "bin");
-        var logFile = Path.Combine(home, "logs", manifest.Id, attempt + ".log");
+        var logFile = Path.Combine(home, "var", "log", manifest.Id, attempt + ".log");
 
         Directory.CreateDirectory(toolDirectory);
         Directory.CreateDirectory(bin);

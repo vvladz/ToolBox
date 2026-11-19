@@ -11,7 +11,7 @@ Installed tools are launched through small `.cmd` files. Updates select a new ve
 - For the `DotNet` source: Git, the SDK required by the source repository, and the runtime needed by the published application.
 - Access to the repository or release selected in each manifest.
 
-Toolbox is a .NET console application. The installer builds a framework-dependent application, which uses the installed .NET runtime.
+Toolbox is a .NET console application. The installer publishes a framework-dependent single-file executable, which uses the installed .NET runtime.
 
 ## Install and update Toolbox
 
@@ -31,14 +31,14 @@ Set-Location ToolBox
 pwsh -File .\install.ps1
 ```
 
-The installer clones or updates Toolbox's source checkout at `~/.toolbox/src`, publishes `src/ToolBox/ToolBox.csproj` into `~/.toolbox/bin`, and adds that directory to your user PATH. `ToolBox.exe` and its companion DLL/configuration files are published together. Other tools' `.cmd` launchers are preserved.
+The installer clones or updates Toolbox's source checkout at `~/.config/toolbox/var/src`, publishes `src/ToolBox/ToolBox.csproj` into `~/.config/toolbox/bin`, and adds that directory to your user PATH. The publish output is a single `ToolBox.exe`, including its managed assemblies, runtime configuration, and debug symbols. The .NET runtime is not bundled. Other tools' `.cmd` launchers are preserved.
 
 Run `ToolBox --help` in the same PowerShell session after the one-line installation. If you ran the installer in a separate PowerShell process, open a new terminal first.
 
 To update an existing installation:
 
 ```powershell
-pwsh -File "$env:USERPROFILE\.toolbox\src\install.ps1"
+pwsh -File "$env:USERPROFILE\.config\toolbox\var\src\install.ps1"
 ```
 
 The repository URL defaults to the cached checkout's `origin`, or `https://github.com/vvladz/ToolBox.git` on first installation. When running the script from a file, use `-Repository <git-url>` to supply another URL. `-Branch` defaults to `main`. Git uses your existing SSH or HTTPS credentials when needed. The source checkout is updated to the selected branch's commit; local changes are never discarded. Close the installed ToolBox process before updating its executable.
@@ -50,10 +50,10 @@ In this guide, `ToolBox` is the directory containing this checkout, and `~` is y
 1. After installing Toolbox, create the manifest directory if needed:
 
    ```powershell
-   New-Item -ItemType Directory -Path "$env:USERPROFILE\.toolbox\etc" -Force
+   New-Item -ItemType Directory -Path "$env:USERPROFILE\.config\toolbox\etc" -Force
    ```
 
-2. Save this as `~/.toolbox/etc/Tool.json` to build a .NET tool from Git:
+2. Save this as `~/.config/toolbox/etc/Tool.json` to build a .NET tool from Git:
 
    ```json
    {
@@ -77,10 +77,10 @@ In this guide, `ToolBox` is the directory containing this checkout, and `~` is y
 4. Run the installed application:
 
    ```powershell
-   & "$env:USERPROFILE\.toolbox\bin\Tool.cmd"
+   & "$env:USERPROFILE\.config\toolbox\bin\Tool.cmd"
    ```
 
-The installer adds `%USERPROFILE%\.toolbox\bin` to PATH, so installed commands and aliases can be invoked by name from a new terminal.
+The installer adds `%USERPROFILE%\.config\toolbox\bin` to PATH, so installed commands and aliases can be invoked by name from a new terminal.
 
 ## Commands
 
@@ -91,11 +91,11 @@ ToolBox Tool --force  # rebuild or download again
 ToolBox --help
 ```
 
-All configuration and installation paths are fixed under `~/.toolbox`. The CLI preserves the calling shell's working directory. PATH setup belongs to `install.ps1`.
+All configuration and installation paths are fixed under `~/.config/toolbox`. The CLI preserves the calling shell's working directory. PATH setup belongs to `install.ps1`.
 
 ## Manifests and command aliases
 
-Toolbox reads `*.json` files directly inside `~/.toolbox/etc`. The filename without `.json` is the tool ID. You can keep this directory in a separate Git repository.
+Toolbox reads `*.json` files directly inside `~/.config/toolbox/etc`. The filename without `.json` is the tool ID. You can keep this directory in a separate Git repository.
 
 | Field | Purpose |
 | --- | --- |
@@ -111,7 +111,7 @@ An array uses each EXE's filename without its extension as the command name:
 "bin": ["app/Tool.exe"]
 ```
 
-This creates `~/.toolbox/bin/Tool.cmd`.
+This creates `~/.config/toolbox/bin/Tool.cmd`.
 
 An object maps command aliases to relative EXE paths:
 
@@ -217,26 +217,27 @@ ToolBox/
 User configuration and installed files live separately:
 
 ```text
-~/.toolbox/
-  src/                  # complete Toolbox Git checkout
-    src/ToolBox/        # application project inside that checkout
+~/.config/toolbox/
   etc/                  # JSON manifests, such as Tool.json
-  bin/                  # ToolBox.exe, companion publish files, and .cmd launchers
-  logs/<tool>/          # one log per installation attempt
-  tools/<tool>/
-    source/             # Git checkout for DotNet
-    work/<attempt>/     # build or download output
-    versions/<attempt>/ # complete installed directory
-    installed           # selected version directory name, plain text
+  bin/                  # single-file ToolBox.exe and .cmd launchers
+  var/
+    log/<tool>/         # one log per installation attempt
+    src/                # complete Toolbox Git checkout
+      src/ToolBox/      # application project inside that checkout
+    tools/<tool>/
+      source/           # Git checkout for DotNet
+      work/<attempt>/   # build or download output
+      versions/<attempt>/ # complete installed directory
+      installed         # selected version directory name, plain text
 ```
 
-`src/ToolBox/Commands/CommandRegistry.cs` registers the application's source commands. User manifests remain in `~/.toolbox/etc`.
+`src/ToolBox/Commands/CommandRegistry.cs` registers the application's source commands. User manifests remain in `~/.config/toolbox/etc`.
 
 `installed` contains one UTF-8 line without a BOM: the selected directory name under `versions`. Each launcher reads it once, starts the EXE from that directory, forwards arguments, and returns its exit code. The caller's working directory is preserved. Applications can read files next to their EXE.
 
 Updates fully prepare and check a new version before replacing `installed` through a temporary file. Launchers stay unchanged while their aliases and EXE paths stay the same. Missing launchers are restored even when no update is needed. If `installed` is missing or empty, or the selected EXE is missing, a launcher reports that the tool is not installed and exits with code `1`.
 
-A shared lock at `tools/.install.lock` prevents concurrent installations. Running programs are not stopped. Old versions, work directories, and logs are retained. Toolbox creates no symbolic links and does not manage daemons.
+A shared lock at `var/tools/.install.lock` prevents concurrent installations. Running programs are not stopped. Old versions, work directories, and logs are retained. Toolbox creates no symbolic links and does not manage daemons.
 
 ## Adding a source command
 
@@ -261,12 +262,12 @@ dotnet run --project src/ToolBox -- --help
 To publish the application to a separate directory for inspection:
 
 ```powershell
-dotnet publish src/ToolBox/ToolBox.csproj -c Release -r win-x64 --self-contained false -o artifacts/publish
+dotnet publish src/ToolBox/ToolBox.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=embedded -o artifacts/publish
 ```
 
 ## Logs and exit codes
 
-Installation results go to stdout. Events and errors go to stderr. Full Git and .NET output is written to `logs/<tool>/<attempt>.log`; installation errors include that path.
+Installation results go to stdout. Events and errors go to stderr. Full Git and .NET output is written to `var/log/<tool>/<attempt>.log`; installation errors include that path.
 
 | Exit code | Meaning |
 | --- | --- |
