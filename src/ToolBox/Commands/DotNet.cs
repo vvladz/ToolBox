@@ -11,7 +11,7 @@ namespace ToolBox.Commands;
 internal static class DotNet
 {
     private const string ReceiptFileName = ".build-info.json";
-    private const string Builder = "dotnet-publish.v5";
+    private const string Builder = "dotnet-publish.v6";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -99,7 +99,6 @@ internal static class DotNet
             Projects = selectedProjects,
             Runtime = runtime,
             Configuration = "Release",
-            SingleFile = true,
             SelfContained = false,
             UseAppHost = true
         };
@@ -127,7 +126,7 @@ internal static class DotNet
             await ProcessRunner.RunAsync("dotnet",
                 ["publish", projectPath, "-c", "Release", "-r", runtime,
                  "-p:SelfContained=false", "-p:PublishSelfContained=false",
-                 "-p:PublishSingleFile=true", "-p:UseAppHost=true", "-o", outputDirectory],
+                 "-p:UseAppHost=true", "-o", outputDirectory],
                 source.SourceDirectory, context.Log, "publish",
                 cancellationToken: context.CancellationToken);
 
@@ -178,7 +177,6 @@ internal static class DotNet
         actual.Projects is { Length: > 0 } && actual.Projects.SequenceEqual(expected.Projects) &&
         actual.Runtime == expected.Runtime &&
         actual.Configuration == expected.Configuration &&
-        actual.SingleFile == expected.SingleFile &&
         actual.SelfContained == expected.SelfContained &&
         actual.UseAppHost == expected.UseAppHost;
 
@@ -210,7 +208,6 @@ internal static class DotNet
         public ProjectBuild[] Projects { get; init; } = [];
         public string Runtime { get; init; } = string.Empty;
         public string Configuration { get; init; } = string.Empty;
-        public bool SingleFile { get; init; }
         public bool SelfContained { get; init; }
         public bool UseAppHost { get; init; }
         public PublishedFile[] Files { get; init; } = [];

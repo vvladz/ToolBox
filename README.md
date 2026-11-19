@@ -169,7 +169,7 @@ Each output subdirectory is named after the project file without its extension. 
 
 Projects are published sequentially from a dedicated checkout. Each output directory keeps its own DLLs, configuration, and resources. The installer selects the new version only after every project has been published successfully.
 
-Publishing uses Release configuration with `PublishSingleFile=true`, `UseAppHost=true`, and `SelfContained=false`. The .NET runtime is not bundled. The complete publish output is installed, including files outside the single-file EXE.
+Publishing uses Release configuration with `UseAppHost=true` and `SelfContained=false`. The command does not force single-file publishing; the source project's setting applies. The .NET runtime is not bundled. The complete publish directory is installed, including EXEs, DLLs, configuration, and resources.
 
 An unchanged commit, project list, output layout, build settings, and recorded files allow publishing to be skipped. Local checkout changes are not discarded; submodules are not supported. Use `--force` after changing the SDK or command implementation when the recorded build settings remain the same.
 
