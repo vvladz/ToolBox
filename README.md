@@ -93,6 +93,8 @@ ToolBox --help
 
 All configuration and installation paths are fixed under `~/.config/toolbox`. The CLI preserves the calling shell's working directory. PATH setup belongs to `install.ps1`.
 
+When processing all tools, malformed manifests, unknown source commands and failed installations are reported per tool; remaining tools are still processed. Results end with totals for installed, unchanged and failed tools. Any tool failure makes the command exit with `1`. Cancellation stops further processing and returns `130`. Missing manifest directories, duplicate tool IDs, directory enumeration errors and failure to acquire the shared installation lock stop the entire invocation.
+
 ## Manifests and command aliases
 
 Toolbox reads `*.json` files directly inside `~/.config/toolbox/etc`. The filename without `.json` is the tool ID. You can keep this directory in a separate Git repository.

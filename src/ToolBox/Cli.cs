@@ -9,9 +9,11 @@ internal static class Cli
 {
     internal static async Task<int> RunAsync(
         string[] args,
-        IReadOnlyDictionary<string, ToolCommand> commands)
+        IReadOnlyDictionary<string, ToolCommand> commands,
+        string? home = null,
+        CancellationToken cancellationToken = default)
     {
-        using var cancellation = new CancellationTokenSource();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         ConsoleCancelEventHandler handler = (_, e) => { e.Cancel = true; cancellation.Cancel(); };
         Console.CancelKeyPress += handler;
         try
@@ -19,28 +21,42 @@ internal static class Cli
             var options = ParseOptions(args);
             if (options.Help) { PrintHelp(); return 0; }
 
-            var home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "toolbox");
-            var manifests = ManifestReader.ReadAll(Path.Combine(home, "etc"), options.Tool);
-            foreach (var manifest in manifests)
-                if (!commands.ContainsKey(manifest.Cmd))
-                    throw new InvalidDataException($"{manifest.Id}: unknown cmd '{manifest.Cmd}'. Register it in Commands/CommandRegistry.cs.");
+            home ??= Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "toolbox");
+            var files = ManifestReader.Enumerate(Path.Combine(home, "etc"), options.Tool);
 
             Directory.CreateDirectory(Path.Combine(home, "var", "tools"));
             Directory.CreateDirectory(Path.Combine(home, "bin"));
             Directory.CreateDirectory(Path.Combine(home, "var", "log"));
             using var installLock = AcquireLock(Path.Combine(home, "var", "tools", ".install.lock"));
 
-            foreach (var manifest in manifests)
+            var installed = 0;
+            var unchanged = 0;
+            var failed = 0;
+            foreach (var file in files)
             {
                 cancellation.Token.ThrowIfCancellationRequested();
-                var result = await Installer.InstallAsync(manifest, home, commands[manifest.Cmd], options.Force, cancellation.Token);
-                Console.Out.WriteLine(result.Changed
-                    ? $"{manifest.Id}: installed {result.VersionDirectory}"
-                    : $"{manifest.Id}: unchanged");
+                try
+                {
+                    var manifest = ManifestReader.Read(file);
+                    if (!commands.TryGetValue(manifest.Cmd, out var command))
+                        throw new InvalidDataException($"Unknown cmd '{manifest.Cmd}'. Register it in Commands/CommandRegistry.cs.");
+                    var result = await Installer.InstallAsync(manifest, home, command, options.Force, cancellation.Token);
+                    if (result.Changed) installed++; else unchanged++;
+                    Console.Out.WriteLine(result.Changed
+                        ? $"{manifest.Id}: installed {result.VersionDirectory}"
+                        : $"{manifest.Id}: unchanged");
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
+                catch (Exception exception)
+                {
+                    failed++;
+                    Console.Error.WriteLine($"{Path.GetFileNameWithoutExtension(file)}: {exception.Message}");
+                }
             }
 
-            if (manifests.Count == 0) Console.Out.WriteLine("No tool manifests found.");
-            return 0;
+            if (files.Length == 0) Console.Out.WriteLine("No tool manifests found.");
+            Console.Out.WriteLine($"Tools: {installed} installed, {unchanged} unchanged, {failed} failed.");
+            return failed == 0 ? 0 : 1;
         }
         catch (OperationCanceledException)
         {
