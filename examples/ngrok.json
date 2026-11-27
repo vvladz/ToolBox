@@ -1,0 +1,7 @@
+{
+  "cmd": "Url",
+  "bin": ["ngrok.exe"],
+  "args": {
+    "url": "https://bin.ngrok.com/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip"
+  }
+}

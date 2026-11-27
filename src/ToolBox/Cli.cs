@@ -166,7 +166,7 @@ internal static class Cli
         --autostart         Run the configured commands from installed versions.
         --help, -h          Show this help.
 
-        cmd selects a source command from Commands/CommandRegistry.cs: DotNet or GitHubRelease.
+        cmd selects a source command from Commands/CommandRegistry.cs: DotNet, GitHubRelease or Url.
         Installation paths are fixed under ~/.config/toolbox; working data is stored in var.
         """);
 }

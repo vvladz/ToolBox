@@ -6,6 +6,7 @@ internal static class CommandRegistry
         new Dictionary<string, ToolCommand>(StringComparer.OrdinalIgnoreCase)
         {
             { "DotNet", DotNet.PrepareAsync },
-            { "GitHubRelease", GitHubRelease.PrepareAsync }
+            { "GitHubRelease", GitHubRelease.PrepareAsync },
+            { "Url", Url.PrepareAsync }
         };
 }

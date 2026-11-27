@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.IO.Enumeration;
 using System.Net;
 using System.Net.Http.Headers;
@@ -12,11 +11,6 @@ internal static class GitHubRelease
 {
     private const string ReceiptName = ".release-info.json";
     private const string Builder = "github-release.v1";
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
-    };
 
     internal static Task<PrepareResult> PrepareAsync(CommandContext context)
     {
@@ -107,9 +101,9 @@ internal static class GitHubRelease
         };
         if (expected.ReleaseId <= 0 || expected.AssetId <= 0 || expected.AssetSize <= 0 || expected.Tag.Length == 0)
             throw new InvalidDataException("GitHub returned incomplete release asset metadata.");
-        var previous = await ReadReceiptAsync(context);
+        var previous = await DownloadedPayload.ReadReceiptAsync<ReleaseInfo>(context, ReceiptName);
         if (!context.Force && previous is not null && context.InstalledDirectory is { } installedDirectory &&
-            SameAsset(previous, expected) && InstalledFilesExist(previous, installedDirectory))
+            SameAsset(previous, expected) && DownloadedPayload.InstalledFilesExist(previous.Files, installedDirectory))
         {
             context.Log.Info($"Release asset {assetName} matches the active installation; download skipped.");
             return new Unchanged();
@@ -142,22 +136,16 @@ internal static class GitHubRelease
         }
         else
         {
-            ExtractZip(download, payloadRoot, context.CancellationToken);
-            payload = archiveDirectory is null ? payloadRoot : Within(payloadRoot, archiveDirectory);
+            using var archive = File.OpenRead(download);
+            DownloadedPayload.ExtractZip(archive, payloadRoot, context.CancellationToken);
+            payload = archiveDirectory is null ? payloadRoot : Path.Combine(payloadRoot, archiveDirectory);
             if (!Directory.Exists(payload))
                 throw new DirectoryNotFoundException($"Archive directory '{archiveDirectory}' was not found.");
         }
-        if (File.Exists(Path.Combine(payload, ReceiptName)) || Directory.Exists(Path.Combine(payload, ReceiptName)))
-            throw new InvalidDataException($"The release payload contains the reserved name '{ReceiptName}'.");
-
-        var files = Directory.EnumerateFiles(payload, "*", SearchOption.AllDirectories)
-            .Select(path => new PayloadFile(Path.GetRelativePath(payload, path).Replace('\\', '/'), new FileInfo(path).Length))
-            .OrderBy(file => file.Path, StringComparer.OrdinalIgnoreCase).ToArray();
-        if (files.Length == 0)
-            throw new InvalidDataException("The selected release payload contains no files.");
+        var files = DownloadedPayload.ListFiles(payload, ReceiptName);
         context.CancellationToken.ThrowIfCancellationRequested();
         await File.WriteAllTextAsync(Path.Combine(payload, ReceiptName),
-            JsonSerializer.Serialize(expected with { Files = files }, JsonOptions) + "\n",
+            JsonSerializer.Serialize(expected with { Files = files }, DownloadedPayload.JsonOptions) + "\n",
             new UTF8Encoding(false), context.CancellationToken);
         context.Log.Info($"Prepared {files.Length} release file(s).");
         return new Prepared(payload, previous?.Repository != expected.Repository || previous.Tag != expected.Tag);
@@ -198,58 +186,6 @@ internal static class GitHubRelease
             throw new HttpRequestException($"GitHub {operation} failed with HTTP {(int)response.StatusCode}.");
     }
 
-    private static void ExtractZip(string archivePath, string destination, CancellationToken cancellationToken)
-    {
-        using var archive = ZipFile.OpenRead(archivePath);
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var entries = new List<(ZipArchiveEntry Entry, string Path, bool Directory)>();
-        foreach (var entry in archive.Entries)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var kind = (entry.ExternalAttributes >> 16) & 0xf000;
-            if (kind is not (0 or 0x8000 or 0x4000) ||
-                (entry.ExternalAttributes & (int)FileAttributes.ReparsePoint) != 0)
-                throw new InvalidDataException("ZIP payloads cannot contain links or special files.");
-            var directory = entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\');
-            var name = Names.RelativePath(directory ? entry.FullName[..^1] : entry.FullName, "ZIP entry");
-            if (!names.Add(name)) throw new InvalidDataException($"ZIP entry '{name}' occurs more than once or differs only by case.");
-            entries.Add((entry, Within(destination, name), directory));
-        }
-        foreach (var item in entries)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (item.Directory) Directory.CreateDirectory(item.Path);
-            else
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(item.Path)!);
-                item.Entry.ExtractToFile(item.Path, overwrite: false);
-            }
-        }
-    }
-
-    private static string Within(string directory, string relative)
-    {
-        relative = Names.RelativePath(relative, "relative payload path");
-        return Path.GetFullPath(Path.Combine(directory, relative.Replace('/', Path.DirectorySeparatorChar)));
-    }
-
-    private static async Task<ReleaseInfo?> ReadReceiptAsync(CommandContext context)
-    {
-        if (context.InstalledDirectory is not { } directory) return null;
-        var path = Path.Combine(directory, ReceiptName);
-        if (!File.Exists(path)) return null;
-        try
-        {
-            await using var stream = File.OpenRead(path);
-            return await JsonSerializer.DeserializeAsync<ReleaseInfo>(stream, JsonOptions, context.CancellationToken);
-        }
-        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
-        {
-            context.Log.Warn("Installed release metadata is unreadable; a new download is required.");
-            return null;
-        }
-    }
-
     private static bool SameAsset(ReleaseInfo actual, ReleaseInfo expected) =>
         actual.Builder == expected.Builder && actual.Repository == expected.Repository &&
         actual.ReleaseId == expected.ReleaseId && actual.Tag == expected.Tag &&
@@ -257,22 +193,6 @@ internal static class GitHubRelease
         actual.AssetUpdatedAt == expected.AssetUpdatedAt && actual.AssetSize == expected.AssetSize &&
         actual.AssetPattern == expected.AssetPattern && actual.ExecutableName == expected.ExecutableName &&
         actual.ArchiveDirectory == expected.ArchiveDirectory;
-
-    private static bool InstalledFilesExist(ReleaseInfo receipt, string directory)
-    {
-        if (receipt.Files is not { Length: > 0 }) return false;
-        try
-        {
-            return receipt.Files.All(file => file is not null && !string.IsNullOrWhiteSpace(file.Path) && file.Length >= 0 &&
-                new FileInfo(Within(directory, file.Path)) is { Exists: true } info && info.Length == file.Length);
-        }
-        catch (Exception exception) when (exception is ArgumentException or IOException or InvalidDataException or UnauthorizedAccessException)
-        {
-            return false;
-        }
-    }
-
-    private sealed record PayloadFile(string Path, long Length);
 
     private sealed record ReleaseInfo
     {

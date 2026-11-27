@@ -1,6 +1,6 @@
 # Toolbox
 
-Toolbox installs and updates command-line tools on Windows. It can publish .NET projects from a Git repository or download EXE and ZIP assets from GitHub releases. Each tool is described by a JSON manifest, and each installation keeps the complete application directory, including configuration and resources.
+Toolbox installs and updates command-line tools on Windows. It can publish .NET projects from Git or download EXE and ZIP files from GitHub releases and vendor websites. Each tool is described by a JSON manifest, and each installation keeps the complete application directory, including configuration and resources.
 
 Installed tools are launched through small `.cmd` files. Updates select a new version without overwriting files from the previous version.
 
@@ -83,7 +83,7 @@ Toolbox reads `*.json` files directly inside `~/.config/toolbox/etc`. The filena
 
 | Field | Purpose |
 | --- | --- |
-| `cmd` | Registered version source command: `DotNet` or `GitHubRelease` |
+| `cmd` | Registered version source command: `DotNet`, `GitHubRelease` or `Url` |
 | `args` | Parameters for the selected source command |
 | `bin` | EXEs to expose as commands; optional |
 | `autostart` | Optional command to run at sign-in |
@@ -196,6 +196,19 @@ Use `GitHubRelease` to install an EXE or ZIP from the latest stable release. Rep
 Public releases do not require a token; set `GITHUB_TOKEN` if authentication is needed. Matching asset metadata and installed files allow the download to be skipped. `--force` downloads the asset again.
 
 Unknown or duplicate manifest fields and source arguments are rejected.
+
+### Url
+
+Use `Url` for a vendor's direct HTTPS link to a ZIP or Windows EXE. The URL path must end in `.zip` or `.exe`. For example, save [ngrok.json](examples/ngrok.json) as `~/.config/toolbox/etc/ngrok.json`, then run:
+
+```powershell
+ToolBox ngrok
+ngrok.cmd version
+```
+
+The manifest selects the stable Windows x64 ZIP from [ngrok's download page](https://ngrok.com/download/windows). Toolbox keeps the complete ZIP contents, and `bin` identifies the EXEs by their relative paths. For a direct EXE, use the original filename from the URL.
+
+Each check downloads the file and compares its SHA-256 digest with the installed receipt. New content activates a new version. A forced install or a repair of the same content skips the `update` command. The temporary download is discarded after the check.
 
 ## Directories and updates
 
