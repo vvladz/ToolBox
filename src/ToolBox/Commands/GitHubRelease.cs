@@ -160,7 +160,7 @@ internal static class GitHubRelease
             JsonSerializer.Serialize(expected with { Files = files }, JsonOptions) + "\n",
             new UTF8Encoding(false), context.CancellationToken);
         context.Log.Info($"Prepared {files.Length} release file(s).");
-        return new Prepared(payload);
+        return new Prepared(payload, previous?.Repository != expected.Repository || previous.Tag != expected.Tag);
     }
 
     private static async Task<HttpResponseMessage> GetAsync(HttpClient client, Uri uri, bool binary, CancellationToken cancellationToken)

@@ -45,7 +45,7 @@ internal static class Installer
             return prepared switch
             {
                 Unchanged => CompleteUnchanged(manifest, bin, toolDirectory, installedFile, versions, log),
-                Prepared payload => CompletePrepared(manifest, payload.Directory, bin, installedFile,
+                Prepared payload => CompletePrepared(manifest, payload, bin, installedFile,
                     versions, toolDirectory, attempt, log, cancellationToken),
                 null => throw new InvalidOperationException("The command returned no preparation result.")
             };
@@ -83,13 +83,14 @@ internal static class Installer
         }
 
         log.Info($"{manifest.Id} is unchanged; command launchers are present.");
-        return new InstallResult(false, target, log.FilePath);
+        return new InstallResult(false, target, log.FilePath, false);
     }
 
     private static InstallResult CompletePrepared(
-        ToolManifest manifest, string payload, string bin, string installedFile, string versions,
+        ToolManifest manifest, Prepared prepared, string bin, string installedFile, string versions,
         string toolDirectory, string attempt, RunLog log, CancellationToken cancellationToken)
     {
+        var payload = prepared.Directory;
         if (string.IsNullOrWhiteSpace(payload) || !Path.IsPathFullyQualified(payload) || !Directory.Exists(payload))
             throw new InvalidOperationException("A prepared result must contain an absolute path to an existing directory.");
 
@@ -136,7 +137,7 @@ internal static class Installer
         }
 
         log.Info($"Activated {manifest.Id}: {version}");
-        return new InstallResult(true, version, log.FilePath);
+        return new InstallResult(true, version, log.FilePath, prepared.VersionChanged);
     }
 
     private static void CopyDirectory(string source, string destination, CancellationToken cancellationToken)
@@ -169,6 +170,13 @@ internal static class Installer
         }
     }
 
+    internal static string GetActiveDirectory(string home, string id)
+    {
+        var tool = Path.Combine(home, "var", "tools", id);
+        return ReadInstalledDirectory(Path.Combine(tool, "installed"), Path.Combine(tool, "versions"))
+            ?? throw new InvalidOperationException($"{id} is not installed.");
+    }
+
     private static string? ReadInstalledDirectory(string installedFile, string versions)
     {
         var entry = ReadEntry(installedFile);
@@ -177,7 +185,9 @@ internal static class Installer
         if (entry.IsDirectory || entry.LinkTarget is not null)
             throw new IOException($"The installed version must be stored in a regular file: {installedFile}");
 
-        var version = File.ReadAllText(installedFile).TrimEnd('\r', '\n');
+        using var stream = new FileStream(installedFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        var version = reader.ReadToEnd().TrimEnd('\r', '\n');
         if (version.Length == 0) return null;
         Names.Validate(version, "installed version");
         var target = Path.Combine(versions, version);

@@ -1,32 +1,25 @@
 #Requires -Version 7.0
 
-[CmdletBinding()]
-param(
-    [string]$Repository,
-    [ValidateNotNullOrEmpty()]
-    [string]$Branch = 'main'
-)
-
-# Keep preferences and helper functions local when invoked through Invoke-Expression.
 & {
     Set-StrictMode -Version Latest
     $ErrorActionPreference = 'Stop'
 
-    if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'Toolbox installation requires PowerShell 7 or later.' }
-    if (-not $IsWindows) { throw 'Toolbox installation requires Windows.' }
-
-    $gitExecutable = (Get-Command git -CommandType Application -ErrorAction Stop).Source
-    $dotnetExecutable = (Get-Command dotnet -CommandType Application -ErrorAction Stop).Source
+    if (-not $IsWindows) { throw 'ToolBox requires Windows.' }
     $toolboxHome = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.config\toolbox'
-    $sourceDirectory = Join-Path $toolboxHome 'var\src'
     $binDirectory = Join-Path $toolboxHome 'bin'
+    $installedExecutable = Join-Path $binDirectory 'ToolBox.exe'
+    $log = Join-Path $toolboxHome 'var\log\tasks'
+    New-Item -ItemType Directory -Force -Path $binDirectory,$log,(Join-Path $toolboxHome 'etc') | Out-Null
 
-    function Invoke-Git {
-        param([string[]]$Arguments)
-
-        $output = & $gitExecutable @Arguments
-        if ($LASTEXITCODE -ne 0) { throw "Git failed with exit code $LASTEXITCODE." }
-        return ($output -join [Environment]::NewLine).TrimEnd()
+    $download = Join-Path $binDirectory ("ToolBox-{0}.exe" -f [guid]::NewGuid())
+    try {
+        Invoke-WebRequest -Uri 'https://github.com/vvladz/ToolBox/releases/latest/download/ToolBox.exe' -OutFile $download
+        & $download --help | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Downloaded ToolBox failed to start (exit $LASTEXITCODE). Check the .NET 11 x64 runtime." }
+        [IO.File]::Move($download, $installedExecutable, $true)
+    }
+    finally {
+        if (Test-Path -LiteralPath $download) { Remove-Item -LiteralPath $download }
     }
 
     function Add-PathEntry {
@@ -42,74 +35,6 @@ param(
         return $Value.TrimEnd(';') + ';' + $Directory
     }
 
-    Invoke-Git -Arguments @('check-ref-format', "refs/heads/$Branch") | Out-Null
-
-    if ([string]::IsNullOrWhiteSpace($Repository)) {
-        $Repository = if (Test-Path -LiteralPath (Join-Path $sourceDirectory '.git')) {
-            Invoke-Git -Arguments @('-C', $sourceDirectory, 'config', '--get', 'remote.origin.url')
-        } else {
-            'https://github.com/vvladz/ToolBox.git'
-        }
-    }
-    if (Test-Path -LiteralPath $Repository -ErrorAction SilentlyContinue) {
-        $Repository = [System.IO.Path]::GetFullPath($Repository)
-    }
-
-    New-Item -ItemType Directory -Path ([System.IO.Path]::GetDirectoryName($sourceDirectory)) -Force | Out-Null
-    if (-not (Test-Path -LiteralPath $sourceDirectory)) {
-        Invoke-Git -Arguments @('clone', '--single-branch', '--no-tags', '--branch', $Branch, '--', $Repository, $sourceDirectory) | Out-Null
-    }
-    if (-not (Test-Path -LiteralPath (Join-Path $sourceDirectory '.git'))) {
-        throw "The source directory must be a dedicated Git checkout: $sourceDirectory"
-    }
-
-    $actualRoot = Invoke-Git -Arguments @('-C', $sourceDirectory, 'rev-parse', '--show-toplevel')
-    if (-not [System.IO.Path]::GetFullPath($actualRoot).Equals($sourceDirectory, [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'The source directory resolves to a different repository root.'
-    }
-    $origin = Invoke-Git -Arguments @('-C', $sourceDirectory, 'config', '--get', 'remote.origin.url')
-    $originComparison = [StringComparison]::Ordinal
-    if (Test-Path -LiteralPath $Repository -ErrorAction SilentlyContinue) {
-        $origin = [System.IO.Path]::GetFullPath($origin)
-        $originComparison = [StringComparison]::OrdinalIgnoreCase
-    }
-    if (-not $origin.Equals($Repository, $originComparison)) {
-        throw 'The cached source uses a different repository. Use its existing origin URL.'
-    }
-    $dirty = Invoke-Git -Arguments @('-C', $sourceDirectory, 'status', '--porcelain=v1', '--untracked-files=normal')
-    if ($dirty.Length -ne 0) {
-        throw "The source checkout has local changes. Commit or move them before updating: $sourceDirectory"
-    }
-
-    Invoke-Git -Arguments @('-C', $sourceDirectory, 'fetch', '--no-tags', 'origin', "refs/heads/$Branch") | Out-Null
-    $commit = Invoke-Git -Arguments @('-C', $sourceDirectory, 'rev-parse', '--verify', 'FETCH_HEAD^{commit}')
-    Invoke-Git -Arguments @('-C', $sourceDirectory, '-c', 'advice.detachedHead=false', 'checkout', '--detach', $commit) | Out-Null
-
-    $projectFile = Join-Path $sourceDirectory 'src\ToolBox\ToolBox.csproj'
-    if (-not (Test-Path -LiteralPath $projectFile -PathType Leaf)) {
-        throw "The selected revision does not contain the Toolbox project: $projectFile"
-    }
-
-    New-Item -ItemType Directory -Path $binDirectory -Force | Out-Null
-    $installedExecutable = Join-Path $binDirectory 'ToolBox.exe'
-    $running = Get-Process -Name ToolBox -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $installedExecutable }
-    if ($running) { throw 'Close the installed ToolBox process before updating it.' }
-
-    Write-Host "Publishing Toolbox from $commit to $binDirectory"
-    Push-Location $sourceDirectory
-    try {
-        & $dotnetExecutable publish $projectFile -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:DebugType=embedded -p:UseAppHost=true -o $binDirectory
-        if ($LASTEXITCODE -ne 0) { throw "Publish failed with exit code $LASTEXITCODE." }
-    }
-    finally { Pop-Location }
-    if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf)) {
-        throw 'Publish did not produce ToolBox.exe.'
-    }
-
-    foreach ($directoryName in @('etc', 'var\log', 'var\tools')) {
-        New-Item -ItemType Directory -Path (Join-Path $toolboxHome $directoryName) -Force | Out-Null
-    }
-
     $userPath = [string][Environment]::GetEnvironmentVariable('Path', [EnvironmentVariableTarget]::User)
     $updatedUserPath = Add-PathEntry -Value $userPath -Directory $binDirectory
     if ($updatedUserPath -cne $userPath) {
@@ -117,6 +42,33 @@ param(
     }
     $env:Path = Add-PathEntry -Value $env:Path -Directory $binDirectory
 
-    Write-Host "Installed $installedExecutable"
-    Write-Host 'User PATH is configured. Open a new terminal if you ran the installer in a separate PowerShell process.'
+    & $installedExecutable
+    if ($LASTEXITCODE -ne 0) { throw "ToolBox failed with exit code $LASTEXITCODE." }
+
+    function New-DeploymentAction([string]$Executable, [string[]]$Arguments, [string]$Log) {
+        function Literal([string]$Value) { "'" + $Value.Replace("'", "''") + "'" }
+        $invocation = '& ' + (Literal $Executable)
+        foreach ($argument in $Arguments) { $invocation += ' ' + (Literal $argument) }
+        $command = '$ErrorActionPreference = ''Stop''; $PSNativeCommandUseErrorActionPreference = $false; ' +
+            $invocation + ' >> ' + (Literal $Log) + ' 2>&1; exit $LASTEXITCODE'
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+        New-ScheduledTaskAction -Execute 'pwsh' -Argument "-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand $encoded" -WorkingDirectory (Split-Path -Parent $Executable)
+    }
+
+    $user = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1)
+    $start = New-ScheduledTaskTrigger -AtLogOn -User $user
+    $start.Delay = 'PT30S'
+    $update = New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.AddDays(1).AddHours(3))
+    $tasks = @(
+        @{ Name = 'ToolBox - Start'; Trigger = $start; Arguments = @('--autostart'); Log = (Join-Path $log 'start.log') },
+        @{ Name = 'ToolBox - Update'; Trigger = $update; Arguments = @(); Log = (Join-Path $log 'update.log') }
+    )
+    foreach ($task in $tasks) {
+        $action = New-DeploymentAction -Executable $installedExecutable -Arguments $task.Arguments -Log $task.Log
+        Register-ScheduledTask -TaskName $task.Name -Action $action -Trigger $task.Trigger -Principal $principal -Settings $settings -Description 'User tool environment managed by ToolBox.' -Force | Out-Null
+    }
+
+    Write-Host 'Installed ToolBox and configured the start and update tasks.'
 }

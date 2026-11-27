@@ -146,7 +146,7 @@ internal static class DotNet
             JsonSerializer.Serialize(receipt, JsonOptions) + "\n", new UTF8Encoding(false),
             context.CancellationToken);
         context.Log.Info($"Prepared {files.Length} published file(s).");
-        return new Prepared(publishDirectory);
+        return new Prepared(publishDirectory, previous?.Repository != expected.Repository || previous.Commit != expected.Commit);
     }
 
     private static async Task<BuildInfo?> ReadReceiptAsync(CommandContext context)
